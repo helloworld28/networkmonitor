@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>网络监控</title>
+    <script src="/js/jquery.1.12.1.js"></script>
+    <script src="/js/websocket/stomp.min.js"></script>
+    <script src="/js/websocket/sockjs.min.js"></script>
+
+    <!-- 新 Bootstrap 核心 CSS 文件 -->
+    <link href="https://cdn.bootcss.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- 可选的Bootstrap主题文件（一般不使用） -->
+    <script src="https://cdn.bootcss.com/bootstrap/3.3.7/css/bootstrap-theme.min.css"></script>
+
+    <!-- jQuery文件。务必在bootstrap.min.js 之前引入 -->
+    <script src="https://cdn.bootcss.com/jquery/2.1.1/jquery.min.js"></script>
+
+    <!-- 最新的 Bootstrap 核心 JavaScript 文件 -->
+    <script src="https://cdn.bootcss.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+</head>
+<body>
+
+<div class="panel panel-info ">
+    <div class="panel-heading">
+        <h3 class="panel-title">操作</h3>
+    </div>
+    <div class="panel-body">
+        <button type="button" onclick="startPing()" class="btn btn-lg btn-primary">开始监控</button>
+        <button type="button" onclick="stopPing()" class="btn btn-lg btn-info">停止监控</button>
+    </div>
+</div>
+<div class="panel panel-success ">
+    <div class="panel-heading">
+        <h3 class="panel-title">连接结果</h3>
+    </div>
+    <div class="panel-body" id="result">
+
+    </div>
+
+</div>
+</body>
+<script>
+    $(function () {
+
+        //setInterval(refreshData, 1000);
+        connectWebSocket();
+
+        initHostList();
+
+    });
+    function connectWebSocket() {
+        var socket = new SockJS('/endPointWisely'); //链接SockJS 的endpoint 名称为"/endpointWisely"
+        stompClient = Stomp.over(socket);//使用stomp子协议的WebSocket 客户端
+        stompClient.connect({}, function (frame) {//链接Web Socket的服务端。
+                console.log('Connected: ' + frame);
+                connectWebSocketSuccessCallback();
+            },
+            function () {
+                setTimeout(function (data) {
+                    console.log("reconnect....");
+                    connectWebSocket()
+                }, 5000);
+            }
+        )
+        ;
+    }
+
+    function connectWebSocketSuccessCallback() {
+
+        stompClient.subscribe('/topic/networkEvent', function (respnose) {
+                //订阅/topic/getResponse 目标发送的消息。这个是在控制器的@SendTo中定义的。
+                var message = JSON.parse(respnose.body);
+                if (message.type == 'show') {
+                    var host = message.data.host;
+
+                    var selector = '#' + host.split(".")[3];
+                    ;
+                    if ($(selector).size() == 0) {
+                        $('#result').append(getButtonHtml(host, message.data.connectedEvent));
+                    } else {
+                        $(selector).removeClass('btn-danger');
+                        $(selector).removeClass('btn-danger');
+                        $(selector).removeClass('btn-default');
+                        if (message.data.connectedEvent == 'LIVE') {
+                            $(selector).addClass("btn-success");
+                        } else if (message.data.connectedEvent == 'UNREACHABLE') {
+                            $(selector).addClass("btn-danger");
+                        } else {
+                            $(selector).addClass("btn-default");
+                        }
+                    }
+
+                }
+                else {
+                    console.log("未知类型" + message.body);
+                }
+            }
+        )
+        ;
+    }
+
+    function getButtonHtml(host, status) {
+        var id = host.split(".")[3];
+        var className = 'btn-default';
+        if (status == 'LIVE') {
+            className = 'btn-success';
+        } else if (status == 'UNREACHABLE') {
+            className = 'btn-danger';
+        }
+        return '<p class="pull-left"><button type="button" onclick="openLogWindow(' + id + ')" id="' + id + '" class="btn ' + className + '">' + host + '</button></p>';
+    }
+
+    function startPing() {
+        $.post("/pingControl/startPing");
+    }
+
+    function stopPing() {
+        $.post("/pingControl/stopPing")
+    }
+
+    function initHostList() {
+        $.get("pingControl/getHostList", function (data) {
+            for (var i = 0; i < data.length; i++) {
+                $('#result').append(getButtonHtml(data[i], 'DEFAULT'));
+            }
+
+
+        });
+    }
+
+    function openLogWindow(id) {
+        var host = $("#" + id).text();
+        window.open("/pingControl/getHostNetworkLogs?host=" + host);
+    }
+
+</script>
+</html>
